@@ -79,6 +79,24 @@ integrate_one () {
     dials.plot_scan_varying_model refined.expt
     dials.integrate refined.expt refined.refl d_min=0.85
     dials.scale integrated.{expt,refl}
+    dials.report scaled.{expt,refl}
+}
+
+scale () {
+    dials.scale "$PROCDIR"/EPICZA_ED_Dataset_1-dials/scaled.{expt,refl}\
+         "$PROCDIR"/EPICZA_ED_Dataset_2-dials/scaled.{expt,refl}\
+         "$PROCDIR"/EPICZA_ED_Dataset_3-dials/scaled.{expt,refl}\
+         "$PROCDIR"/EPICZA_ED_Dataset_4-dials/scaled.{expt,refl}\
+         d_min=0.87
+    dials.split_experiments scaled.expt scaled.refl
+    mv split_0.expt scaled_1.expt
+    mv split_1.expt scaled_2.expt
+    mv split_2.expt scaled_3.expt
+    mv split_3.expt scaled_4.expt
+    mv split_0.refl scaled_1.refl
+    mv split_1.refl scaled_2.refl
+    mv split_2.refl scaled_3.refl
+    mv split_3.refl scaled_4.refl
 }
 
 # EPICZA_ED_Dataset_1
@@ -111,4 +129,11 @@ mkdir -p EPICZA_ED_Dataset_4-dials
 cd EPICZA_ED_Dataset_4-dials
 TEMPLATE="$DATADIR"/EPICZA_ED_Dataset_4/n15_a005_####.cbf
 integrate_one "$TEMPLATE" 267,268 0.999821,-0.0187882,-0.00243261 0,0.071 1
+cd "$PROCDIR"
+
+# Scaling
+cd "$PROCDIR"
+mkdir -p scaling
+cd scaling
+scale
 cd "$PROCDIR"
