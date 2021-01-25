@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-DIALS_VERSION=$(dials.version | head -1 | awk '{print $NF}')
+DIALS_VERSION=$(dials.version | cat | head -1 | awk '{print $NF}')
 echo "DIALS version: $DIALS_VERSION"
 IFS=. read major minor patch <<< "$DIALS_VERSION"
 if [[ "$minor" == "dev" ]]; then
