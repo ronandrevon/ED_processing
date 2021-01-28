@@ -17,7 +17,10 @@ from scitbx import matrix
 from libtbx import phil
 from dials.util.options import OptionParser, reflections_and_experiments_from_files
 from dials.util import Sorry, show_mail_handle_errors
-
+import pytest
+import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as plt
 
 phil_scope = phil.parse(
     """\
@@ -34,6 +37,9 @@ image = 0
             "that image, which is the boundary between image_0001 and"
             "image_0002."
 
+test = False
+    .type = bool
+    .help = "Run in-line tests during operation"
 """,
     process_includes=True,
 )
@@ -82,7 +88,12 @@ def run(args=None):
     basename, ext = os.path.splitext(os.path.basename(params.cif_file))
     filename = basename + ".csv"
     if structure:
-        write_rotated(structure, orientation, filename)
+        if params.test:
+            test_rotation(structure, orientation)
+        new_pos = write_rotated(structure, orientation, filename)
+    
+    #if params.test:
+    #    plot_atom_positions(new_pos)
 
     # Find reflections close to the Ewald sphere
     nearby = close_to_Ewald_sphere(reflections, experiments, params.image)
@@ -149,6 +160,9 @@ def write_rotated(structure, orientation, filename):
     tr = gemmi.Transform()
     tr.mat.fromlist(orientation.as_list_of_lists())
 
+    # TODO
+    # Rotate 180 degrees
+
     pos = []
     for site in sites:
         pos.append(tr.apply(site.orth(structure.cell)))
@@ -157,6 +171,75 @@ def write_rotated(structure, orientation, filename):
         f.write("Atom,X,Y,Z,Occ,u_iso\n")
         for s, p in zip(sites, pos):
             f.write(f"{s.element.atomic_number},{p.x},{p.y},{p.z},{s.occ},{s.u_iso}\n")
+            
+    return pos
+
+def set_axes_equal(ax):
+    """Make axes of 3D plot have equal scale so that spheres appear as spheres,
+    cubes as cubes, etc..  This is one possible solution to Matplotlib's
+    ax.set_aspect('equal') and ax.axis('equal') not working for 3D.
+
+    Input
+      ax: a matplotlib axis, e.g., as output from plt.gca().
+    """
+
+    x_limits = ax.get_xlim3d()
+    y_limits = ax.get_ylim3d()
+    z_limits = ax.get_zlim3d()
+
+    x_range = abs(x_limits[1] - x_limits[0])
+    x_middle = np.mean(x_limits)
+    y_range = abs(y_limits[1] - y_limits[0])
+    y_middle = np.mean(y_limits)
+    z_range = abs(z_limits[1] - z_limits[0])
+    z_middle = np.mean(z_limits)
+
+    # The plot bounding box is a sphere in the sense of the infinity
+    # norm, hence I call half the max range the plot radius.
+    plot_radius = 0.5 * max([x_range, y_range, z_range])
+
+    ax.set_xlim3d([x_middle - plot_radius, x_middle + plot_radius])
+    ax.set_ylim3d([y_middle - plot_radius, y_middle + plot_radius])
+    ax.set_zlim3d([z_middle - plot_radius, z_middle + plot_radius])
+
+def plot_atom_positions(positions):
+    fig = plt.figure()
+    ax = fig.gca(projection="3d")
+    
+    X = []
+    Y = []
+    Z = []
+    for pos in positions:
+        X.append(pos.x)
+        Y.append(pos.y)
+        Z.append(pos.z)
+    
+    ax.scatter(X, Y, Z)
+    
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.set_zlabel("z")
+
+    #ax.set_aspect("equal")
+    set_axes_equal(ax)    
+    
+    plt.show()
+    return
+
+def test_rotation(structure, orientation):
+    """Test gemmi rotation transformation does what we expect"""
+    sites = structure.get_all_unit_cell_sites()
+    tr = gemmi.Transform()
+    tr.mat.fromlist(orientation.as_list_of_lists())
+    
+    orig_pos = [site.orth(structure.cell) for site in sites]
+    plot_atom_positions(orig_pos)
+    new_pos = [tr.apply(pos) for pos in orig_pos]
+    
+    for vector, rotated in zip(orig_pos, new_pos):
+        rotated2 = orientation * matrix.col(vector.tolist())
+        for i in range(3):
+            assert rotated2[i] == pytest.approx(rotated[i])
 
 
 def close_to_Ewald_sphere(reflections, experiments, scan_point):
