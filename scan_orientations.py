@@ -91,7 +91,7 @@ def run(args=None):
         if params.test:
             test_rotation(structure, orientation)
         new_pos = write_rotated(structure, orientation, filename)
-    
+
     #if params.test:
     #    plot_atom_positions(new_pos)
 
@@ -109,7 +109,7 @@ def extract_orientation(exp, image):
     # Correct for first image number to index scan points
     array_range = scan.get_array_range()
     if image < array_range[0] or image > array_range[1]:
-        sys.exit(f"image {i} lies outside the allowed range {array_range}")
+        sys.exit(f"image {image} lies outside the allowed range {array_range}")
     i = image - array_range[0]
 
     if gonio.num_scan_points > 0:
@@ -171,7 +171,7 @@ def write_rotated(structure, orientation, filename):
         f.write("Atom,X,Y,Z,Occ,u_iso\n")
         for s, p in zip(sites, pos):
             f.write(f"{s.element.atomic_number},{p.x},{p.y},{p.z},{s.occ},{s.u_iso}\n")
-            
+
     return pos
 
 def set_axes_equal(ax):
@@ -205,7 +205,7 @@ def set_axes_equal(ax):
 def plot_atom_positions(positions):
     fig = plt.figure()
     ax = fig.gca(projection="3d")
-    
+
     X = []
     Y = []
     Z = []
@@ -213,16 +213,16 @@ def plot_atom_positions(positions):
         X.append(pos.x)
         Y.append(pos.y)
         Z.append(pos.z)
-    
+
     ax.scatter(X, Y, Z)
-    
+
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_zlabel("z")
 
     #ax.set_aspect("equal")
-    set_axes_equal(ax)    
-    
+    set_axes_equal(ax)
+
     plt.show()
     return
 
@@ -231,11 +231,11 @@ def test_rotation(structure, orientation):
     sites = structure.get_all_unit_cell_sites()
     tr = gemmi.Transform()
     tr.mat.fromlist(orientation.as_list_of_lists())
-    
+
     orig_pos = [site.orth(structure.cell) for site in sites]
     plot_atom_positions(orig_pos)
     new_pos = [tr.apply(pos) for pos in orig_pos]
-    
+
     for vector, rotated in zip(orig_pos, new_pos):
         rotated2 = orientation * matrix.col(vector.tolist())
         for i in range(3):
