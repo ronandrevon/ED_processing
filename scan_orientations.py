@@ -14,6 +14,7 @@ from __future__ import absolute_import, division, print_function
 import sys, os
 import gemmi
 from scitbx import matrix
+from scitbx.array_family import flex
 from libtbx import phil
 from dials.util.options import OptionParser, reflections_and_experiments_from_files
 from dials.util import Sorry, show_mail_handle_errors
@@ -21,6 +22,7 @@ import pytest
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
+import import_cif
 
 phil_scope = phil.parse(
     """\
@@ -78,19 +80,20 @@ def run(args=None):
     experiment = experiments[0]
 
     # Try to load the structural model
-    try:
-        structure = gemmi.read_small_structure(params.cif_file)
-    except Exception as e:
-        sys.exit("No structural model provided to rotate")
+    # try:
+        # structure = gemmi.read_small_structure(params.cif_file)
+    # except Exception as e:
+    #     sys.exit("No structural model provided to rotate")
+    structure = import_cif.import_xyz(params.cif_file)
 
     # Write out structure at the requested orientation
     orientation = extract_orientation(experiment, params.image)
     basename, ext = os.path.splitext(os.path.basename(params.cif_file))
-    filename = basename + ".csv"
-    if structure:
-        if params.test:
-            test_rotation(structure, orientation)
-        new_pos = write_rotated(structure, orientation, filename)
+    filename = params.cif_file.replace('.xyz','')+'_rotated%d.xyz' %params.image  #basename + ".csv"
+    # if structure:
+    if params.test:
+        test_rotation(structure, orientation)
+    new_pos = write_rotated(structure, orientation, filename)
 
     #if params.test:
     #    plot_atom_positions(new_pos)
@@ -156,21 +159,28 @@ def extract_orientation(exp, image):
 
 
 def write_rotated(structure, orientation, filename):
-    sites = structure.get_all_unit_cell_sites()
-    tr = gemmi.Transform()
-    tr.mat.fromlist(orientation.as_list_of_lists())
-
+    # sites = structure.get_all_unit_cell_sites()
+    SFRU=matrix.col((1,0,0)).axis_and_angle_as_r3_rotation_matrix(45,deg=True)
+    orientation = orientation.as_mat3()
+    # tr = gemmi.Transform()
+    # tr.mat.fromlist(orientation.as_list_of_lists())
+    pattern,lat_params = structure
+    coords = flex.vec3_double(np.array(pattern[:,1:4],dtype=np.double))
+    pattern[:,1:4] = orientation*coords
+    import_cif.make_xyz(filename,pattern,lat_params,fmt='%.4f')
     # TODO
     # Rotate 180 degrees
 
     pos = []
-    for site in sites:
-        pos.append(tr.apply(site.orth(structure.cell)))
-
-    with open(filename, "w") as f:
-        f.write("Atom,X,Y,Z,Occ,u_iso\n")
-        for s, p in zip(sites, pos):
-            f.write(f"{s.element.atomic_number},{p.x},{p.y},{p.z},{s.occ},{s.u_iso}\n")
+    # sites = coords
+    # for site in sites:
+    #     site = flex.vec3_double(np.array(site,dtype=np.double))
+    #     # pos.append(tr.apply(site.orth(structure.cell)))
+    #     pos.append(orientation*coords)
+    # with open(filename, "w") as f:
+        # f.write("Atom,X,Y,Z,Occ,u_iso\n")
+        # for s, p in zip(sites, pos):
+        #     f.write(f"{s.element.atomic_number},{p.x},{p.y},{p.z},{s.occ},{s.u_iso}\n")
 
     return pos
 
