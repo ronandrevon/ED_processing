@@ -5,8 +5,9 @@ from colorama import Fore as colors
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from mpl_toolkits.mplot3d import Axes3D
+import utils.displayStandards as dsp
 
-def import_cif(cif_file,rep=[1,1,1],pad=0):
+def import_cif(cif_file,xyz_file=None,rep=[1,1,1],pad=0):
     ''' convert cif file into autoslic .xyz input file
     - cif_file : file to import
     - rep : super cell repeat
@@ -48,7 +49,7 @@ def import_cif(cif_file,rep=[1,1,1],pad=0):
     #save
     # print(Za.shape,coords.shape)
     pattern = np.hstack([Za[:,None],coords,occ[:,None],bfact[:,None]])
-    xyz_file = cif_file.replace('.cif','.xyz')
+    if not xyz_file:xyz_file = cif_file.replace('.cif','.xyz')
     make_xyz(xyz_file,pattern,lat_params,fmt='%.4f')
 
 
@@ -79,7 +80,7 @@ def import_xyz(xyz_file):
     pattern = np.array(l[2:-1],dtype=float)
     return pattern,lat_params
 
-def show_grid(xyz_file,opts='',**kwargs):
+def show_grid(xyz_file,opts='',ms=1,**kwargs):
     '''display an .xyz file content in a 2D plane
     xyz_file : .xyz file
     opt : str format for 2 plane 'x1x2' - 'xy','xz','yz','zx',...
@@ -93,7 +94,7 @@ def show_grid(xyz_file,opts='',**kwargs):
     if opts =='3d':
         fig = plt.figure()
         ax = plt.subplot(111,projection='3d')
-        ax.scatter3D(pattern[:,1],pattern[:,2],pattern[:,3],s=50,c=C)
+        ax.scatter3D(pattern[:,1],pattern[:,2],pattern[:,3],s=5,c=C)
         set_axes_equal(ax)
         ax.set_xlabel("x")
         ax.set_ylabel("y")
@@ -105,12 +106,15 @@ def show_grid(xyz_file,opts='',**kwargs):
         x1,x2 = opts
         i,j = xij[x1],xij[x2]
 
-        fig,ax = plt.subplots()
-        plt.scatter(pattern[:,i],pattern[:,j],50,C)
-        ax.add_patch(Rectangle((0,0),lat_params[i-1],lat_params[j-1],linewidth=2,edgecolor='b',alpha=0.1))
-        ax.set_xlabel('$%s$'%x1,fontsize=20)
-        ax.set_ylabel('$%s$'%x2,fontsize=20)
-        fig.show()
+        # fig,ax = plt.subplots()
+        # plt.scatter(pattern[:,i],pattern[:,j],ms,C)
+        # ax.add_patch(Rectangle((0,0),lat_params[i-1],lat_params[j-1],linewidth=2,edgecolor='b',alpha=0.1))
+        # ax.set_xlabel('$%s$'%x1,fontsize=20)
+        # ax.set_ylabel('$%s$'%x2,fontsize=20)
+        # fig.show()
+        scat = [pattern[:,i],pattern[:,j],ms,C]
+        patches=[Rectangle((0,0),lat_params[i-1],lat_params[j-1],linewidth=2,edgecolor='b',alpha=0.1)]
+        dsp.stddisp(scat=scat,patches=patches,labs=['$%s$'%x1,'$%s$'%x2],**kwargs)
     else:
         print('opts should be xy, xz, yz, or 3d')
 
@@ -147,9 +151,13 @@ def set_axes_equal(ax):
 ##################################################################################################
 if __name__ == '__main__':
     plt.close('all')
+    figpath = '/home/tarik/Documents/git/ccp4/docs/projects/multislice/figures/ireloh/'
     # cif_file = '/home/tarik/Documents/git/ccp4/src/electron-diffraction/multislice/dat/ireloh/ireloh.cif'
+    cif_file = 'ireloh.cif'
+    xyz_file = 'ireloh111.xyz'
     # xyz_file = cif_file.replace('.cif','.xyz')
-    # import_cif(cif_file,rep=[2,2,1],pad=0)
+    import_cif(cif_file,xyz_file=xyz_file,rep=[1,1,1],pad=0)
+    # import_cif(cif_file,rep=[15,15,15],pad=0)
     # show_grid(xyz_file,opts='xy')
-    show_grid('ireloh_rotated484.xyz',opts='3d')
-    show_grid('ireloh_rotated484.xyz',opts='xy')
+    # show_grid('ireloh_rotated484.xyz',opts='3d')
+    # show_grid('ireloh_rotated484.xyz',opts='xz',ms=1, opt='sc',name=figpath+'484_X.png')

@@ -51,7 +51,7 @@ test = False
 def run(args=None):
     from dials.util.options import OptionParser, flatten_experiments
 
-    usage = "dials.python scan_orientations.py integrated.expt integrated.refl cif_file=mol.cif scan_point=0"
+    usage = "dials.python scan_orientations.py integrated.expt integrated.refl cif_file=mol.cif image=0"
 
     parser = OptionParser(
         usage=usage,
@@ -93,7 +93,7 @@ def run(args=None):
     # if structure:
     if params.test:
         test_rotation(structure, orientation)
-    new_pos = write_rotated(structure, orientation, filename)
+    new_pos = write_rotated(structure, orientation, filename,pad=0.5)
 
     #if params.test:
     #    plot_atom_positions(new_pos)
@@ -108,7 +108,7 @@ def extract_orientation(exp, image):
     beam = exp.beam
     scan = exp.scan
     gonio = exp.goniometer
-
+    print(gonio.get_rotation_axis())
     # Correct for first image number to index scan points
     array_range = scan.get_array_range()
     if image < array_range[0] or image > array_range[1]:
@@ -122,7 +122,7 @@ def extract_orientation(exp, image):
 
     F = matrix.sqr(gonio.get_fixed_rotation())
     axis = matrix.col(gonio.get_rotation_axis_datum())
-    phi = scan.get_angle_from_array_index(i, deg=True)
+    phi = scan.get_angle_from_array_index(i, deg=True);print(phi)
     R = matrix.sqr(axis.axis_and_angle_as_r3_rotation_matrix(phi, deg=True))
 
     if crystal.num_scan_points > 0:
@@ -155,23 +155,34 @@ def extract_orientation(exp, image):
     print(f"b: {b[0]:.6f}, {b[1]:.6f} {b[2]:.6f}")
     print(f"c: {c[0]:.6f}, {c[1]:.6f} {c[2]:.6f}")
 
+
+    # SRFU =  U
     return SRFU
 
 
-def write_rotated(structure, orientation, filename):
+def write_rotated(structure, orientation, filename,pad=0):
     # sites = structure.get_all_unit_cell_sites()
-    SFRU=matrix.col((1,0,0)).axis_and_angle_as_r3_rotation_matrix(45,deg=True)
+    # SFRU=matrix.col((1,0,0)).axis_and_angle_as_r3_rotation_matrix(45,deg=True)
     orientation = orientation.as_mat3()
+
     # tr = gemmi.Transform()
     # tr.mat.fromlist(orientation.as_list_of_lists())
     pattern,lat_params = structure
     coords = flex.vec3_double(np.array(pattern[:,1:4],dtype=np.double))
-    pattern[:,1:4] = orientation*coords
-    import_cif.make_xyz(filename,pattern,lat_params,fmt='%.4f')
+    coords = orientation*coords
     # TODO
-    # Rotate 180 degrees
+    # Rotate 180 degrees around x to keep rotation axis
 
-    pos = []
+    # Rx = np.array([
+    #     [1,0,0 ],
+    #     [0,0,-1],
+    #     [0,1,0 ]])
+    # coords = Rx.dot(np.array(coords).T).T
+    # coords, lat_params = apply_padding(coords,lat_params,pad)
+    pattern[:,1:4] = coords
+    import_cif.make_xyz(filename,pattern,lat_params,fmt='%.4f')
+
+    # pos = []
     # sites = coords
     # for site in sites:
     #     site = flex.vec3_double(np.array(site,dtype=np.double))
@@ -182,7 +193,19 @@ def write_rotated(structure, orientation, filename):
         # for s, p in zip(sites, pos):
         #     f.write(f"{s.element.atomic_number},{p.x},{p.y},{p.z},{s.occ},{s.u_iso}\n")
 
-    return pos
+    # return pos
+
+def apply_padding(coords,lat_params,pad):
+    ax = coords[:,0].max()-coords[:,0].min()
+    by = coords[:,1].max()-coords[:,1].min()
+    cz = coords[:,2].max()-coords[:,2].min()
+    coords[:,0] += ax*pad-coords[:,0].min()
+    coords[:,1] += by*pad-coords[:,1].min()
+    coords[:,2] -= coords[:,2].min()
+    lat_params[0] = ax*(1+2*pad)
+    lat_params[1] = by*(1+2*pad)
+    lat_params[2] = cz #*(1+2*pad)
+    return coords, lat_params
 
 def set_axes_equal(ax):
     """Make axes of 3D plot have equal scale so that spheres appear as spheres,
@@ -259,3 +282,5 @@ def close_to_Ewald_sphere(reflections, experiments, scan_point):
 
 if __name__ == "__main__":
     run()
+    # import_cif.show_grid('ireloh_rotated484.xyz',opts='xy',ms=1,opt='')
+    # plt.show()
