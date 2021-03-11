@@ -1,42 +1,50 @@
 # import importlib as imp
-from subprocess import Popen,PIPE
 import numpy as np
-import binascii,os
+import binascii,os,optparse
+from subprocess import Popen,PIPE
 from glob import glob
-import import_cif
 from libtbx import phil
 from dials.util.options import OptionParser, reflections_and_experiments_from_files,flatten_experiments,flatten_reflections
 from cbflib_adaptbx import compress
 from scitbx.array_family import flex
 from scitbx import matrix
+import import_cif
+from utils import glob_colors as colors
 
 adxv = os.environ['HOME']+'/bin/adxv.x86_64CentOS7'
-Rx180 = np.array([
-    [1,0,0 ],
-    [0,0,-1],
-    [0,1,0 ]])
 
-def gen_xyz(path,name='',cif_file=None,step=1,rep=1,pad=0):
+
+def gen_xyz(exp_path,name='',cif_file=None,step=1,rep=1,pad=0,popt=0):
+    ''' Generate a set of .xyz from cif_file with the same orientations as an experiment
+    - exp_path  : Experiment directory containing the .exp and .refl files
+    - name      : prefix to save the files as <prefix><num_image>.xyz
+    - cif_file  : full path to cif_file (if None taking first instance of cif_file in directory)
+    - rep       : list3 or int : crystal size will be rep[0] x rep[1] x rep[2]
+    - pad       : amount of padding around the crystal in super cell units
+    - step      : images[0:-1:step] will be used to generate the .xyz files
+    - popt      : show structures in xy plane if True
+    Returns :
+    - saves the .xyz files
     '''
-    - path:postprocess directory containing exp and refl
-    - name : prefix to save figures
-    - cif_file:full path to cif_file (if None taking first instance of cif_file in directory)
-    - step : step for images to take'''
-    if not cif_file:cif_file = glob(path+'*.cif')[0]       ;print(cif_file)
-    exp,refl    = get_exp_refl(path,'indexed.expt','indexed.refl')
+    if not cif_file:cif_file = glob(exp_path+'*.cif')[0]              #;print(cif_file)
+    exp,refl    = get_exp_refl(exp_path,'indexed.expt','indexed.refl')
     scan        = exp.scan
     array_range = scan.get_array_range()
-    # files = glob(path+'*.cbf')
-    # images = [int(f.split('_')[-1].replace('.cbf','')) for f in files];print(images)
     import_cif.import_cif(cif_file,rep=rep)
     for image in range(array_range[0],array_range[1],step):
         i = image - array_range[0]
         orientation = extract_orientation(exp, i)
-        filename = path+'%s%s.xyz' %(name,str(i).zfill(4))
+        filename = exp_path+'%s%s.xyz' %(name,str(i).zfill(4))
         structure = import_cif.import_xyz(cif_file.replace('.cif','.xyz'))
         write_rotated(structure, orientation, filename,pad=pad)
 
+        if popt:show_xyz(filename,opts='xy');plt.show()
+
 def get_exp_refl(path,exp_file='imported.expt',refl_file='strong.refl'):
+    '''Get experiments and reflections[0] form an .expt and .refl files
+    Returns
+    - experiments,reflections[0]
+    '''
     if not refl_file:refl_file=exp_file.replace('.expt','.refl')
     phil_scope  = phil.parse(""" """)
     parser      = OptionParser(usage='',phil=None,read_experiments=True,read_reflections=True)
@@ -79,13 +87,17 @@ def extract_orientation(exp, i):
     return SRFU
 
 
+Rx180 = np.array([
+    [1,0,0 ],
+    [0,0,-1],
+    [0,1,0 ]])
 def write_rotated(structure, orientation, filename,pad=0):
     orientation = orientation.as_mat3()
     pattern,lat_params = structure
     coords = flex.vec3_double(np.array(pattern[:,1:4],dtype=np.double))
     coords = orientation*coords
-    # Rotate 180 degrees around x to keep rotation axis
     # coords = np.array(coords)
+    #### Rotate 180 degrees around x to keep rotation axis
     coords = Rx180.dot(np.array(coords).T).T
     coords, lat_params = apply_padding(coords,lat_params,pad)
     pattern[:,1:4] = coords
@@ -107,15 +119,16 @@ def apply_padding(coords,lat_params,pad):
 
 def save_cbf(im,orig_path,out_cbf=None,pOpt=False):
     ''' convert np.ndarray to cbf
-    - im : np.ndarray or str : image to convert to cbf
-    - orig_path : the exp data to get the header from
-    - out_cbf : name of the ouput cbf
-    - pOpt : Show cbf file with adxv if True
+    - im        : np.ndarray or str : image to convert to cbf
+    - orig_path : the path to exp data to get the header from those images
+    - out_cbf   : name of the .cbf output file
+    - pOpt      : Show cbf file with adxv if True (remember to set the path to adxv l.13)
     '''
+    from utils import glob_colors as colors
     if isinstance(im,str) :
         im = np.load(im)
         if not out_cbf : out_cbf = in_npy.replace('.npy','.cbf')
-    orig_file = glob(orig_path+'*.cbf')[1]; print(orig_file)
+    orig_file = glob(orig_path+'*.cbf')[1] #;print(orig_file)
     # orig_file = "/home/tarik/Documents/data/ireloh/IRELOH_ED_Dataset_1/n14_a004_0484.cbf"
     start_tag = binascii.unhexlify("0c1a04d5")
 
@@ -137,7 +150,8 @@ def save_cbf(im,orig_path,out_cbf=None,pOpt=False):
 
     tail = data[data_offset + length :]
 
-    im001 = flex.int32(np.array(im*2**15,dtype=np.int32))
+    # print(im.shape,fast,slow,length)
+    im001 = flex.int32(im) #np.array(im,dtype=np.int32))
     compressed = compress(im001)
     nbytes = len(compressed)
 
@@ -149,25 +163,56 @@ def save_cbf(im,orig_path,out_cbf=None,pOpt=False):
     new_cbf_header = pre + new_xbsize_record + post
 
     open(out_cbf, "wb").write(new_cbf_header.encode() + start_tag + compressed + tail)
-    # print(colors.green +'file saved : \n' +colors.yellow+out_cbf+colors.black)
+    print(colors.green +'file saved : \n' +colors.yellow+out_cbf+colors.black)
     if pOpt:
         p = Popen("%s %s" %(adxv,out_cbf),
             shell=True);p.wait()
 
+def convert_I(im,cap=2**16,m=2**30):
+    ''' converts a float intensity image to uint32
+    - im  : str - image as a the .npy file
+    - m   : int - multiplying factor
+    - cap : int - max value to apply a cap
+    '''
+    qx,qy,I = np.load(im)
+    I/=I.max()
+    I = np.array(I*m,dtype=np.uint32)
+    I[I>cap] = cap
+    # print(I.min(),I.max())
+    return qx,qy,I
 
-# def get_A(exp):
-#     crystal_model = exp.crystal
-#     cs = crystal_model.symmetry(
-#         unit_cell=crystal_model.get_unit_cell(),
-#         space_group=crystal_model.get_space_group(),
-#     )
-#     cb_op = cs.change_of_basis_op_to_reference_setting()
-#     cr = crystal_model.change_basis(cb_op)
-#     A = matrix.sqr(cr.get_A())
-#     return A
+def npy2cbf(path,image,expdata_path,cap=2**15,m=2**32):
+    npy_file  = get_image(path,image,fmt='_autoslic_patternS.npy')
+    base_file = os.path.basename(npy_file).split('_')[0]
+    cbf_file  = path+'%s_001_%s.cbf' %(base_file,str(image).zfill(4))
+    qx,qy,I   = convert_I(npy_file,cap=cap,m=m)
+    save_cbf(I,expdata_path,cbf_file,pOpt=0)
+    # return qx,qy,I
+
+
 #########################################################################################
 #### display
 #########################################################################################
+def plot_npy(npy_file,**kwargs):
+    from utils import displayStandards as dsp   #;imp.reload(dsp)
+    qx,qy,I = np.load(npy_file)
+    # print('npy : Imax=%d, Imean=%d' %(I.max(),I.mean()))
+    I/=I.max()
+    dsp.stddisp(im=[qx,-qy,I],
+        title='%s' %os.path.basename(npy_file).replace('_',' '),
+        imOpt='cv',axPos='V',cmap='binary',**kwargs)
+
+def plot_cbf(cbf_file,caxis=[0,100],**kwargs):
+    import multislice.mupy_utils as mut         #;imp.reload(mut)
+    imV = mut.Image_viewer(cbf_file,sym=0,pad=4)
+    print('cbf : Imax=%d, Imean=%d' %(imV.image.max(),imV.image.mean()))
+    return imV.show_image(stack=0,lab='p',cmap='binary',
+        caxis=caxis,imOpt='c', axPos='V',**kwargs)
+
+def show_xyz(xyz_name,**kwargs):
+    import multislice.mupy_utils as mut #; imp.reload(mut)
+    mut.show_grid(xyz_name,**kwargs)
+
 def xyz_gif(dpath,rpath,opath,name,images=None,xylims=None):
     '''
     dpath : data path
@@ -201,8 +246,6 @@ def xyz_gif(dpath,rpath,opath,name,images=None,xylims=None):
     print(o,e)
     # return p
 
-
-
 # def show_phi(path):
 #     from utils import displayStandards as dsp
 #     exp,refl = get_exp_refl(path,'indexed.expt','indexed.refl')
@@ -211,3 +254,47 @@ def xyz_gif(dpath,rpath,opath,name,images=None,xylims=None):
 #     n       = i2-i1
 #     phi     = [scan.get_angle_from_array_index(i, deg=True) for i in range(n)]
 #     dsp.stddisp([range(n),phi,'b'],labs=['i','$\phi(deg)$'])
+
+
+####################################################################################
+##### post process parser
+####################################################################################
+def pp_parser():
+    usage = '''\n
+python3 ireloh_pp.py [--dir=<data_dir>] [--image=<image>] [--opts=<str>] [--plot_opts=<str>] [-h]\n
+example :\n
+run ireloh_pp.py -d'simus/ireloh2/ireloh2_pad2/' -e'simus/ireloh2/exp/' -i0 o's' -p'pP'
+    '''
+    description = '''Post processing simulated data'''
+    parser = optparse.OptionParser(usage=usage,description=description)#,epilog=epilog,)
+
+    base_dir = 'simus/dat/ireloh/ireloh2/'
+    exp_dir = base_dir+'exp/'
+    sim_dir = base_dir+'ireloh2_pad2/'
+    parser.add_option("-d","--dir",default=sim_dir,action="store",type="string",dest="sim_dir",
+        help="str - full path to simulation data")
+    parser.add_option("-e","--exp",default=exp_dir,action="store",type="string",dest="exp_dir",
+        help="str - full path to experimental data(for cbf header and comparison purposes )")
+    parser.add_option("-i","--image",default=-1,action="store",type="int",dest="image",
+        help="int - still image number to work with (it will try the image index if it cannot find the actual number)")
+    parser.add_option("-o","--opts",default="",action="store",type="string",dest="opts",
+        help="str - s(save to cbf) i(dials.import) f(dials.find_spots) h(miller index)")
+    parser.add_option("-p","--plot_opts",default="",action="store",type="string",dest="plot_opts",
+        help="str - p(plot the .npy) P(plott the .cbf) A(use adxv) I(use dials.image_viewer)")
+    return parser
+
+def get_image(path,image,fmt='.cbf'):
+    cbf_files = glob(path+'*%s' %fmt)#;print(cbf_files)
+    cbf_base  = '_'.join(cbf_files[0].replace(fmt,'').split('_')[:-1])  #;print(cbf_base)
+    str_image = str(image).zfill(4)
+    cbf_file  = '%s_%s%s' %(cbf_base,str_image,fmt)       #;print(cbf_file)
+    if not os.path.exists(cbf_file):
+        if len(cbf_files)<=image:
+            raise Exception('image %s not found, Available images :\n%s' %(cbf_file,'\n'.join(cbf_files)) )
+        warn = '''warning:
+        image not found :\n%s
+        using instead image :\n%s
+        ''' %(colors.yellow+cbf_file+colors.black,colors.green+cbf_files[image]+colors.black )
+        print(warn)
+        cbf_file  = cbf_files[image]
+    return cbf_file
