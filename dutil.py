@@ -1,5 +1,5 @@
-# import importlib as imp
-import numpy as np
+import importlib as imp
+import numpy as np, matplotlib.pyplot as plt
 import binascii,os,optparse
 from subprocess import Popen,PIPE
 from glob import glob
@@ -8,37 +8,47 @@ from dials.util.options import OptionParser, reflections_and_experiments_from_fi
 from cbflib_adaptbx import compress
 from scitbx.array_family import flex
 from scitbx import matrix
-import import_cif
+import import_cif; imp.reload(import_cif)
 from utils import glob_colors as colors
 
 adxv = os.environ['HOME']+'/bin/adxv.x86_64CentOS7'
 
 
-def gen_xyz(exp_path,name='',cif_file=None,step=1,rep=1,pad=0,popt=0):
+def gen_xyz(exp_path,name='',cif_file=None,step=1,rep=1,pad=0,image=-1,i=-1,bfacts=None,popt=0):
     ''' Generate a set of .xyz from cif_file with the same orientations as an experiment
     - exp_path  : Experiment directory containing the .exp and .refl files
     - name      : prefix to save the files as <prefix><num_image>.xyz
     - cif_file  : full path to cif_file (if None taking first instance of cif_file in directory)
     - rep       : list3 or int : crystal size will be rep[0] x rep[1] x rep[2]
     - pad       : amount of padding around the crystal in super cell units
+    - image/i   : int>=0 - Still image mode : image number/index number
     - step      : images[0:-1:step] will be used to generate the .xyz files
     - popt      : show structures in xy plane if True
     Returns :
     - saves the .xyz files
     '''
     if not cif_file:cif_file = glob(exp_path+'*.cif')[0]              #;print(cif_file)
-    exp,refl    = get_exp_refl(exp_path,'indexed.expt','indexed.refl')
+    experiments,refl = get_exp_refl(exp_path,'indexed.expt','indexed.refl')
+    exp         = experiments[0]
     scan        = exp.scan
     array_range = scan.get_array_range()
-    import_cif.import_cif(cif_file,rep=rep)
-    for image in range(array_range[0],array_range[1],step):
+    import_cif.import_cif(cif_file,rep=rep,bfacts=bfacts)
+    def rotate_structure(image):
         i = image - array_range[0]
         orientation = extract_orientation(exp, i)
-        filename = exp_path+'%s%s.xyz' %(name,str(i).zfill(4))
+        filename = '%s%s.xyz' %(name,str(image).zfill(4))
         structure = import_cif.import_xyz(cif_file.replace('.cif','.xyz'))
         write_rotated(structure, orientation, filename,pad=pad)
+        if popt:fig,ax = show_xyz(filename,opts='xy');plt.show()
 
-        if popt:show_xyz(filename,opts='xy');plt.show()
+    if i>=0:
+        rotate_structure(i+array_range[0])
+    elif image>=0:
+        rotate_structure(image)
+    else:
+        for image in np.arange(array_range[0],array_range[1],step):
+            rotate_structure(image)
+
 
 def get_exp_refl(path,exp_file='imported.expt',refl_file='strong.refl'):
     '''Get experiments and reflections[0] form an .expt and .refl files
@@ -193,13 +203,17 @@ def npy2cbf(path,image,expdata_path,cap=2**15,m=2**32):
 #########################################################################################
 #### display
 #########################################################################################
-def plot_npy(npy_file,**kwargs):
+def plot_npy(npy_file,title=None,log=False,**kwargs):
     from utils import displayStandards as dsp   #;imp.reload(dsp)
     qx,qy,I = np.load(npy_file)
     # print('npy : Imax=%d, Imean=%d' %(I.max(),I.mean()))
     I/=I.max()
+    if log:
+        I[I<1e-10]=1e-10
+        I = np.log10(I)
+    if not title:title='%s' %os.path.basename(npy_file).replace('_',' '),
     dsp.stddisp(im=[qx,-qy,I],
-        title='%s' %os.path.basename(npy_file).replace('_',' '),
+        title=title,
         imOpt='cv',axPos='V',cmap='binary',**kwargs)
 
 def plot_cbf(cbf_file,caxis=[0,100],**kwargs):
@@ -211,7 +225,7 @@ def plot_cbf(cbf_file,caxis=[0,100],**kwargs):
 
 def show_xyz(xyz_name,**kwargs):
     import multislice.mupy_utils as mut #; imp.reload(mut)
-    mut.show_grid(xyz_name,**kwargs)
+    return mut.show_grid(xyz_name,**kwargs)
 
 def xyz_gif(dpath,rpath,opath,name,images=None,xylims=None):
     '''

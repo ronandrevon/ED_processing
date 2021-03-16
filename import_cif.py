@@ -7,7 +7,7 @@ from matplotlib.patches import Rectangle
 from mpl_toolkits.mplot3d import Axes3D
 import utils.displayStandards as dsp
 
-def import_cif(cif_file,xyz_file=None,rep=[1,1,1],pad=0):
+def import_cif(cif_file,xyz_file=None,rep=[1,1,1],bfacts=None,pad=0):
     ''' convert cif file into autoslic .xyz input file
     - cif_file : file to import
     - rep : super cell repeat
@@ -15,17 +15,21 @@ def import_cif(cif_file,xyz_file=None,rep=[1,1,1],pad=0):
     returns :
     - saves cif_file.xyz
     '''
+    if not bfacts:bfacts = {1:0.01,6:0.06,7:0.07,8:0.08}
+
     crys = Crystal.from_cif(cif_file)
     lat_params = np.array(crys.lattice_parameters[:3])
     Za     = np.array([a.atomic_number for a in crys.atoms])
     occ    = np.array([a.occupancy for a in crys.atoms])
-    bfact  = np.ones(Za.shape)
+    bfact  = np.array([bfacts[Z] for Z in Za]) #np.ones(Za.shape)
     coords = np.array([a.coords_cartesian for a in crys.atoms])
+
+    if isinstance(rep,int):rep=[rep]*3 #;print(rep)
     Nx,Ny,Nz = rep
     ax,by,cz = lat_params
 
     #replicate
-    if sum(rep)>3 :
+    if Nx+Ny+Nz>3 :
         ni,nj,nk = np.meshgrid(range(Nx),range(Ny),range(Nz))
         ni,nj,nk = ni.flatten(),nj.flatten(),nk.flatten()
         a1,a2,a3 = np.array(crys.lattice_vectors)
